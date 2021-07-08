@@ -122,7 +122,7 @@ void handler()
  * 1 bit ~0.4 ms high followed by ~0.2 ms low
  * 0 bit ~0.2 ms high followed by ~0.4 ms low
  */
-int convertTimingToBit(const uint32_t t0, const uint32_t t1)
+int8_t convertTimingToBit(const uint32_t t0, const uint32_t t1)
 {
 	if (t0 > (BIT1_HIGH - 100) && t0 < (BIT1_HIGH + 100) && t1 > (BIT1_LOW - 100) && t1 < (BIT1_LOW + 100))
 	{
@@ -145,7 +145,7 @@ channel getChannel()
 	const uint32_t stopIndex = (dataIndex + 4) % RING_BUFFER_SIZE;
 	for (uint32_t i = startIndex; i != stopIndex; i = (i + 2) % RING_BUFFER_SIZE)
 	{
-		const int bit = convertTimingToBit(pulseDurations[i], pulseDurations[(i + 1) % RING_BUFFER_SIZE]);
+		const auto bit = convertTimingToBit(pulseDurations[i], pulseDurations[(i + 1) % RING_BUFFER_SIZE]);
 		channel = (channel << 1) + bit;
 		if (bit < 0)
 			return UNKNOWN;
@@ -188,7 +188,7 @@ float getTemperature()
 	uint32_t stopIndex = (dataIndex + (4 * 8 + 8) * 2) % RING_BUFFER_SIZE;
 	for (uint32_t i = startIndex; i != stopIndex; i = (i + 2) % RING_BUFFER_SIZE)
 	{
-		const int bit = convertTimingToBit(pulseDurations[i], pulseDurations[(i + 1) % RING_BUFFER_SIZE]);
+		const auto bit = convertTimingToBit(pulseDurations[i], pulseDurations[(i + 1) % RING_BUFFER_SIZE]);
 		temp = (temp << 1) + bit;
 		if (bit < 0)
 			return -1.0;
@@ -198,7 +198,7 @@ float getTemperature()
 	stopIndex = (dataIndex + (5 * 8 + 8) * 2) % RING_BUFFER_SIZE;
 	for (uint32_t i = startIndex; i != stopIndex; i = (i + 2) % RING_BUFFER_SIZE)
 	{
-		const int bit = convertTimingToBit(pulseDurations[i % RING_BUFFER_SIZE],
+		const auto bit = convertTimingToBit(pulseDurations[i % RING_BUFFER_SIZE],
 			pulseDurations[(i + 1) % RING_BUFFER_SIZE]);
 		temp = (temp << 1) + bit; // shift and insert next bit
 		if (bit < 0)
@@ -216,7 +216,7 @@ uint32_t getHumidity()
 	const uint32_t stopIndex = (dataIndex + (4 * 8) * 2) % RING_BUFFER_SIZE;
 	for (uint32_t i = startIndex; i != stopIndex; i = (i + 2) % RING_BUFFER_SIZE)
 	{
-		const int bit = convertTimingToBit(pulseDurations[i], pulseDurations[(i + 1) % RING_BUFFER_SIZE]);
+		const auto bit = convertTimingToBit(pulseDurations[i], pulseDurations[(i + 1) % RING_BUFFER_SIZE]);
 		humidity = (humidity << 1) + bit;
 		if (bit < 0)
 			return -1;
@@ -233,7 +233,7 @@ void displayDataBytes()
 
 	for (int i = 0; i < DATABITSCNT; i++)
 	{
-		const int bit = convertTimingToBit(pulseDurations[ringIndex % RING_BUFFER_SIZE],
+		const auto bit = convertTimingToBit(pulseDurations[ringIndex % RING_BUFFER_SIZE],
 		                                   pulseDurations[(ringIndex + 1) % RING_BUFFER_SIZE]);
 
 		if (bit < 0)
@@ -271,12 +271,12 @@ int main(int argc, char* argv[])
 {	
 	if (wiringPiSetup() == -1)
 	{
-		printf("No WiringPi detected\n");
+		cout << "No WiringPi detected" << endl;
 		return 0;
 	}
 	else
 	{
-		printf("WiringPi initialized successfully.\n");
+		cout << "WiringPi initialized successfully." << endl;
 	}
 	
 	wiringPiISR(DATA_PIN, INT_EDGE_BOTH, &handler);
@@ -298,13 +298,13 @@ int main(int argc, char* argv[])
 
 		if (tempC < 0)
 		{
-			printf("Decoding error.\n");
+			cout << "Decoding error." << endl;
 		}
 		else
 		{
 			const float tempF = tempC * 9 / 5 + 32;
 
-			printf("[%c]: %f*C, %f*F, %d%% RH\n", channelToChar(channel), tempC, tempF, humidity);
+			cout << '[' << channelToChar(channel) << "]: " << tempC << "*C, " << tempF << "*F, " << humidity << "% RH" << endl;
 		}
 
 		delay(1000);
