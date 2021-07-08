@@ -1,6 +1,5 @@
 #include <bitset>
 #include <chrono>
-#include <cstdlib>
 #include <iostream>
 #include <mutex>
 #include <queue>
@@ -297,7 +296,6 @@ int main(int argc, char* argv[])
             }
             
             syncFound = false;
-            wiringPiISR(DATA_PIN, INT_EDGE_BOTH, &handler);
         }
     });
 
