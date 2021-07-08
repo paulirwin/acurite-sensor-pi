@@ -64,10 +64,10 @@ bool isSync(const uint32_t idx)
  */
 int8_t convertTimingToBit(const uint32_t t0, const uint32_t t1)
 {
-    if (t0 > (BIT1_HIGH - 100) && t0 < (BIT1_HIGH + 100) && t1 >(BIT1_LOW - 100) && t1 < (BIT1_LOW + 100))
+    if (t0 > (BIT1_HIGH - 100) && t0 < (BIT1_HIGH + 100) && t1 > (BIT1_LOW - 100) && t1 < (BIT1_LOW + 100))
         return 1;
 
-    if (t0 > (BIT0_HIGH - 100) && t0 < (BIT0_HIGH + 100) && t1 >(BIT0_LOW - 100) && t1 < (BIT0_LOW + 100))
+    if (t0 > (BIT0_HIGH - 100) && t0 < (BIT0_HIGH + 100) && t1 > (BIT0_LOW - 100) && t1 < (BIT0_LOW + 100))
         return 0;
 
     return -1; // undefined
@@ -78,9 +78,9 @@ void handler()
     static uint32_t duration = 0;
     static uint32_t lastTime = 0;
     static uint32_t ringIndex = 0;
-    
+
     if (received == true)
-	    return;
+        return;
 
     const uint32_t time = micros();
     duration = time - lastTime;
@@ -129,7 +129,7 @@ void handler()
         else
         {
             lastMessageBits = {};
-        	
+
             for (uint32_t i = dataIndex % RING_BUFFER_SIZE, j = 0; j < DATABITSCNT; i = (i + 2) % RING_BUFFER_SIZE, j++)
             {
                 const auto bit = convertTimingToBit(pulseDurations[i], pulseDurations[(i + 1) % RING_BUFFER_SIZE]);
@@ -138,13 +138,13 @@ void handler()
                     received = false;
                     break;
                 }
-                
-            	if (bit == 1)
-            	{
+
+                if (bit == 1)
+                {
                     lastMessageBits.flip(DATABITSCNT - j - 1);
-            	}
+                }
             }
-        	
+
             received = true;
         }
     }
@@ -154,11 +154,11 @@ enum channel { UNKNOWN, A, B, C };
 
 channel getChannel(const bitset<DATABITSCNT>& bits)
 {
-	const bool bit0 = bits[DATABITSCNT - 1];
-	const bool bit1 = bits[DATABITSCNT - 2];
-	
+    const bool bit0 = bits[DATABITSCNT - 1];
+    const bool bit1 = bits[DATABITSCNT - 2];
+
     if (bit0 && bit1)
-	    return A;
+        return A;
     if (bit0)
         return B;
     if (!bit0 && !bit1)
@@ -191,7 +191,7 @@ float getTemperature(const bitset<DATABITSCNT>& bits)
     {
         temp = (temp << 1) + bits[DATABITSCNT - i - 1];
     }
-	    
+
     // least significant 7 bits
     for (int i = (5 * 8 + 1); i < (5 * 8 + 8); i++)
     {
@@ -204,24 +204,24 @@ float getTemperature(const bitset<DATABITSCNT>& bits)
 uint32_t getHumidity(const bitset<DATABITSCNT>& bits)
 {
     uint32_t humidity = 0;
-    
+
     for (int i = (3 * 8 + 1); i < (4 * 8); i++)
     {
         humidity = (humidity << 1) + bits[DATABITSCNT - i - 1];
     }
-    
+
     return humidity;
 }
 
 int main(int argc, char* argv[])
-{	
+{
     if (wiringPiSetup() == -1)
     {
         cout << "No WiringPi detected" << endl;
         return -1;
     }
 
-	cout << "WiringPi initialized successfully." << endl;
+    cout << "WiringPi initialized successfully." << endl;
 
     wiringPiISR(DATA_PIN, INT_EDGE_BOTH, &handler);
 
@@ -229,10 +229,10 @@ int main(int argc, char* argv[])
     loopTimer.start(std::chrono::milliseconds(50), []
     {
         if (received != true)
-	        return;
+            return;
 
         system("/usr/bin/gpio edge 2 none");
-        
+
         const auto bits = lastMessageBits;
 
 #ifdef DISPLAY_DATA_BYTES
@@ -251,7 +251,8 @@ int main(int argc, char* argv[])
         {
             const float tempF = tempC * 9 / 5 + 32;
 
-            cout << '[' << channelToChar(channel) << "]: " << tempC << "*C, " << tempF << "*F, " << humidity << "% RH" << endl;
+            cout << '[' << channelToChar(channel) << "]: " << tempC << "*C, " << tempF << "*F, " << humidity << "% RH"
+                << endl;
         }
 
         //delay(1000);

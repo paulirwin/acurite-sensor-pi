@@ -9,26 +9,26 @@ using std::thread;
 
 class Timer
 {
-	thread th;
+    thread th;
 
 public:
-	typedef std::chrono::milliseconds Interval;
-	typedef std::function<void(void)> Timeout;
+    typedef std::chrono::milliseconds Interval;
+    typedef std::function<void(void)> Timeout;
 
-	void start(const Interval& interval, const Timeout& timeout)
-	{
-		th = thread([=]()
-		{
-			while (true)
-			{
-				std::this_thread::sleep_for(interval);
-				timeout();
-			}
-		});
-	}
+    void start(const Interval& interval, const Timeout& timeout)
+    {
+        th = thread([=]()
+        {
+            while (true)
+            {
+                std::this_thread::sleep_for(interval);
+                timeout();
+            }
+        });
+    }
 
-	void join()
-	{
-		th.join();
-	}
+    void join()
+    {
+        th.join();
+    }
 };
