@@ -1,13 +1,18 @@
-#include <wiringPi.h>
-#include <cstdlib>
-#include <iostream>
 #include <bitset>
 #include <chrono>
+#include <cstdlib>
+#include <iostream>
+#include <mutex>
+#include <queue>
+#include <wiringPi.h>
 
 #include "timer.h"
 
 using std::cout, std::endl;
 using std::bitset;
+using std::queue;
+using std::mutex;
+using std::unique_lock;
 
 constexpr auto RING_BUFFER_SIZE = 128;
 constexpr auto SYNC_HIGH = 600;
@@ -33,9 +38,11 @@ uint32_t pulseDurations[RING_BUFFER_SIZE];
 uint32_t syncIndex = 0; // index of the last bit time of the sync signal
 uint32_t dataIndex = 0; // index of the first bit time of the data bits (syncIndex+1)
 bool syncFound = false; // true if sync pulses found
-bool received = false; // true if sync plus enough bits found
 uint32_t changeCount = 0;
-bitset<DATABITSCNT> lastMessageBits = {};
+
+mutex queueMutex;
+queue<uint64_t> messageQueue = {};
+uint64_t lastMessage = 0;
 
 bool isSync(const uint32_t idx)
 {
@@ -73,15 +80,36 @@ int8_t convertTimingToBit(const uint32_t t0, const uint32_t t1)
     return -1; // undefined
 }
 
+void addMessageToQueue(const uint64_t message)
+{
+    unique_lock lock(queueMutex);
+    messageQueue.push(message);
+}
+
+uint64_t getMessageFromTiming()
+{
+    uint64_t message = 0;
+
+    for (uint32_t i = dataIndex % RING_BUFFER_SIZE, j = 0; j < DATABITSCNT; i = (i + 2) % RING_BUFFER_SIZE, j++)
+    {
+        const auto bit = convertTimingToBit(pulseDurations[i], pulseDurations[(i + 1) % RING_BUFFER_SIZE]);
+        if (bit < 0)
+        {
+            return 0;
+        }
+
+        message = (message << 1) | bit;
+    }
+
+    return message;
+}
+
 void handler()
 {
     static uint32_t duration = 0;
     static uint32_t lastTime = 0;
     static uint32_t ringIndex = 0;
-
-    if (received == true)
-        return;
-
+    
     const uint32_t time = micros();
     duration = time - lastTime;
     lastTime = time;
@@ -92,7 +120,6 @@ void handler()
     // and should start over.
     if ((duration > (PULSE_LONG + 100)) || (duration < (PULSE_SHORT - 100)))
     {
-        received = false;
         syncFound = false;
         changeCount = 0; // restart looking for data bits
     }
@@ -115,37 +142,21 @@ void handler()
     // DATABITSEDGES data bit edges.
     if (syncFound)
     {
-        // if not enough bits yet, no message received yet
-        if (changeCount < DATABITSEDGES)
+        if (changeCount == DATABITSEDGES)
         {
-            received = false;
+            const auto message = getMessageFromTiming();
+
+            if (message != lastMessage) {
+                addMessageToQueue(message);
+                lastMessage = message;
+            }
+
+            syncFound = false;
+            delay(1000);
         }
         else if (changeCount > DATABITSEDGES)
         {
-            // if too many bits received then reset and start over
-            received = false;
             syncFound = false;
-        }
-        else
-        {
-            lastMessageBits = {};
-
-            for (uint32_t i = dataIndex % RING_BUFFER_SIZE, j = 0; j < DATABITSCNT; i = (i + 2) % RING_BUFFER_SIZE, j++)
-            {
-                const auto bit = convertTimingToBit(pulseDurations[i], pulseDurations[(i + 1) % RING_BUFFER_SIZE]);
-                if (bit < 0)
-                {
-                    received = false;
-                    break;
-                }
-
-                if (bit == 1)
-                {
-                    lastMessageBits.flip(DATABITSCNT - j - 1);
-                }
-            }
-
-            received = true;
         }
     }
 }
@@ -213,6 +224,32 @@ uint32_t getHumidity(const bitset<DATABITSCNT>& bits)
     return humidity;
 }
 
+bool getMessageFromQueue(uint64_t& message)
+{
+    unique_lock lock(queueMutex);
+
+    if (messageQueue.empty())
+        return false;
+
+    message = messageQueue.front();
+    messageQueue.pop();
+
+    return true;
+}
+
+bool checksum(const uint64_t message)
+{
+    uint32_t runningSum = 0;
+    const uint8_t expected = message & 0xff;
+
+    for (int i = 1; i < 7; i++)
+    {
+        runningSum += (message >> (i * 8)) & 0xff;
+    }
+
+    return (runningSum % 256) == expected;
+}
+
 int main(int argc, char* argv[])
 {
     if (wiringPiSetup() == -1)
@@ -226,39 +263,42 @@ int main(int argc, char* argv[])
     wiringPiISR(DATA_PIN, INT_EDGE_BOTH, &handler);
 
     Timer loopTimer;
-    loopTimer.start(std::chrono::milliseconds(50), []
+    loopTimer.start(std::chrono::seconds(1), []
     {
-        if (received != true)
-            return;
+        uint64_t message;
+        while (getMessageFromQueue(message)) {
 
-        system("/usr/bin/gpio edge 2 none");
-
-        const auto bits = lastMessageBits;
+            const bitset<DATABITSCNT> bits(message);
 
 #ifdef DISPLAY_DATA_BYTES
-        cout << "Raw data: " << bits << endl;
+            cout << "Raw data: " << bits << endl;
 #endif
 
-        const channel channel = getChannel(bits);
-        const float tempC = getTemperature(bits);
-        const uint32_t humidity = getHumidity(bits);
+            if (!checksum(message))
+            {
+                cout << "Invalid checksum: " << bits << endl;
+                continue;
+            }
 
-        if (tempC < 0)
-        {
-            cout << "Decoding error." << endl;
+            const channel channel = getChannel(bits);
+            const float tempC = getTemperature(bits);
+            const uint32_t humidity = getHumidity(bits);
+
+            if (tempC < 0)
+            {
+                cout << "Decoding error." << endl;
+            }
+            else
+            {
+                const float tempF = tempC * 9 / 5 + 32;
+
+                cout << '[' << channelToChar(channel) << "]: " << tempC << "*C, " << tempF << "*F, " << humidity << "% RH"
+                    << endl;
+            }
+            
+            syncFound = false;
+            wiringPiISR(DATA_PIN, INT_EDGE_BOTH, &handler);
         }
-        else
-        {
-            const float tempF = tempC * 9 / 5 + 32;
-
-            cout << '[' << channelToChar(channel) << "]: " << tempC << "*C, " << tempF << "*F, " << humidity << "% RH"
-                << endl;
-        }
-
-        //delay(1000);
-        received = false;
-        syncFound = false;
-        wiringPiISR(DATA_PIN, INT_EDGE_BOTH, &handler);
     });
 
     loopTimer.join();
