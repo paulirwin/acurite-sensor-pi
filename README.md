@@ -13,7 +13,7 @@ merged with the Raspberry Pi code for a different sensor from https://rayshobby.
 
 Connect a [433MHz superheterodyne receiver](https://www.sparkfun.com/products/10532) to your Pi. 
 There are many pins on this receiver but you only need three: +5V, DATA (aka Digital Out), and GND. 
-Connect +5V and GND to their respective pins, and DATA to pin 13 (WiringPi pin 2) on a 40-pin model like the 3 B+.
+Connect +5V and GND to their respective pins, and DATA to a 51kΩ resistor then to pin 13 (WiringPi pin 2) on a 40-pin model like the 3 B+.
 
 ## Building
 
