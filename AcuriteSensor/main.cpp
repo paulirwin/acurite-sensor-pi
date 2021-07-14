@@ -259,7 +259,8 @@ int main(int argc, char* argv[])
 
     cout << "WiringPi initialized successfully." << endl;
 
-    wiringPiISR(DATA_PIN, INT_EDGE_BOTH, &handler);
+    pullUpDnControl(DATA_PIN, PUD_DOWN);
+    wiringPiISR(DATA_PIN, INT_EDGE_BOTH, &handler);    
 
     Timer loopTimer;
     loopTimer.start(std::chrono::seconds(1), []
@@ -291,7 +292,10 @@ int main(int argc, char* argv[])
             {
                 const float tempF = tempC * 9 / 5 + 32;
 
-                cout << '[' << channelToChar(channel) << "]: " << tempC << "*C, " << tempF << "*F, " << humidity << "% RH"
+                cout << '[' << channelToChar(channel) << "]: "
+                    << tempC << "*C, "
+                    << tempF << "*F, "
+                    << humidity << "% RH"
                     << endl;
             }
             
