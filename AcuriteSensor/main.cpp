@@ -3,6 +3,11 @@
 #include <iostream>
 #include <mutex>
 #include <queue>
+#include <string>
+
+#include <curlpp/Easy.hpp>
+#include <curlpp/Options.hpp>
+#include <curlpp/Exception.hpp>
 #include <wiringPi.h>
 
 #include "timer.h"
@@ -11,7 +16,9 @@ using std::cout, std::endl;
 using std::bitset;
 using std::queue;
 using std::mutex;
+using std::optional;
 using std::unique_lock;
+using std::string;
 
 constexpr auto RING_BUFFER_SIZE = 128;
 constexpr auto SYNC_HIGH = 600;
@@ -42,6 +49,77 @@ uint32_t changeCount = 0;
 mutex queueMutex;
 queue<uint64_t> messageQueue = {};
 uint64_t lastMessage = 0;
+
+optional<string> adafruitIoUsername;
+optional<string> adafruitIoKey;
+
+enum channel { UNKNOWN, A, B, C };
+
+char channelToUpperChar(const channel channel)
+{
+    switch (channel)
+    {
+    case A:
+        return 'A';
+    case B:
+        return 'B';
+    case C:
+        return 'C';
+    default:
+        return '?';
+    }
+}
+
+char channelToLowerChar(const channel channel)
+{
+    switch (channel)
+    {
+    case A:
+        return 'a';
+    case B:
+        return 'b';
+    case C:
+        return 'c';
+    default:
+        return '?';
+    }
+}
+
+unsigned dummyWriteCurlResponseData(char * buffer, const unsigned size, const unsigned nmemb, void * userp)
+{
+    return size * nmemb;
+}
+
+void saveToAdafruitIo(const channel channel, const float tempF)
+{
+    if (channel == UNKNOWN || !adafruitIoKey.has_value() || !adafruitIoUsername.has_value())
+        return;
+
+    const string username = adafruitIoUsername.value();
+    const string key = adafruitIoKey.value();
+
+    try {
+        curlpp::Easy request;
+        
+        request.setOpt(new curlpp::options::Url("https://io.adafruit.com/api/v2/" + username + "/feeds/acurite-sensor-" + channelToLowerChar(channel) + "-temp/data"));
+        request.setOpt(new curlpp::options::Verbose(false));
+        request.setOpt(new curlpp::options::WriteFunctionCurlFunction(dummyWriteCurlResponseData));
+
+        std::list<std::string> header;
+        header.push_back("X-AIO-Key: " + key);
+        
+        request.setOpt(new curlpp::options::HttpHeader(header));
+        request.setOpt(new curlpp::options::PostFields("value=" + std::to_string(tempF)));
+        
+        request.perform();
+    }
+    catch (curlpp::LogicError& e) {
+        std::cout << e.what() << std::endl;
+    }
+    catch (curlpp::RuntimeError& e) {
+        std::cout << e.what() << std::endl;
+    }
+}
 
 bool isSync(const uint32_t idx)
 {
@@ -160,8 +238,6 @@ void handler()
     }
 }
 
-enum channel { UNKNOWN, A, B, C };
-
 channel getChannel(const bitset<DATABITSCNT>& bits)
 {
     const bool bit0 = bits[DATABITSCNT - 1];
@@ -175,21 +251,6 @@ channel getChannel(const bitset<DATABITSCNT>& bits)
         return C;
 
     return UNKNOWN;
-}
-
-char channelToChar(const channel channel)
-{
-    switch (channel)
-    {
-    case A:
-        return 'A';
-    case B:
-        return 'B';
-    case C:
-        return 'C';
-    default:
-        return '?';
-    }
 }
 
 float getTemperature(const bitset<DATABITSCNT>& bits)
@@ -243,7 +304,7 @@ bool checksum(const uint64_t message)
 
     for (int i = 1; i < 7; i++)
     {
-        runningSum += (message >> (i * 8)) & 0xff;
+        runningSum += static_cast<uint32_t>((message >> (i * 8)) & 0xff);
     }
 
     return (runningSum % 256) == expected;
@@ -260,7 +321,21 @@ int main(int argc, char* argv[])
     cout << "WiringPi initialized successfully." << endl;
 
     pullUpDnControl(DATA_PIN, PUD_DOWN);
-    wiringPiISR(DATA_PIN, INT_EDGE_BOTH, &handler);    
+    wiringPiISR(DATA_PIN, INT_EDGE_BOTH, &handler);
+
+    const char* adafruitUsernameEnv = getenv("ADAFRUIT_IO_USERNAME");
+    const char* adafruitKeyEnv = getenv("ADAFRUIT_IO_KEY");
+
+    if (adafruitUsernameEnv != nullptr && adafruitKeyEnv != nullptr)
+    {
+        adafruitIoUsername = adafruitUsernameEnv;
+        adafruitIoKey = adafruitKeyEnv;
+        cout << "Found Adafruit IO env vars." << endl;
+    }
+    else
+    {
+        cout << "Not using Adafruit IO. To use, set ADAFRUIT_IO_USERNAME and ADAFRUIT_IO_KEY env vars." << endl;
+    }
 
     Timer loopTimer;
     loopTimer.start(std::chrono::seconds(1), []
@@ -292,11 +367,13 @@ int main(int argc, char* argv[])
             {
                 const float tempF = tempC * 9 / 5 + 32;
 
-                cout << '[' << channelToChar(channel) << "]: "
+                cout << '[' << channelToUpperChar(channel) << "]: "
                     << tempC << "*C, "
                     << tempF << "*F, "
                     << humidity << "% RH"
                     << endl;
+
+                saveToAdafruitIo(channel, tempF);
             }
             
             syncFound = false;
