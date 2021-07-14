@@ -70,10 +70,20 @@
     </RemotePostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="AdafruitIoFeed.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Message.cpp" />
+    <ClCompile Include="MessageQueue.cpp" />
+    <ClCompile Include="Sensor.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="timer.h" />
+    <ClInclude Include="AdafruitIoFeed.h" />
+    <ClInclude Include="Channel.h" />
+    <ClInclude Include="constants.h" />
+    <ClInclude Include="Message.h" />
+    <ClInclude Include="MessageQueue.h" />
+    <ClInclude Include="Sensor.h" />
+    <ClInclude Include="Timer.h" />
   </ItemGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">
     <ClCompile>
