@@ -17,6 +17,8 @@ Connect +5V and GND to their respective pins, and DATA to a 51kΩ resistor then 
 
 ## Building
 
+Install `libcurl4-openssl-dev` and `libcurlpp-dev` with apt.
+
 Enable SSH on your Pi. Currently this is a Visual Studio 2019 C++ project that uses SSH to your Pi to build and deploy. It builds on the pi with g++, not MSVC. 
 
 Build the app in Visual Studio and it should prompt you for the SSH credentials and host/IP. You can see the build output in the Output pane. 
@@ -25,8 +27,6 @@ while for headers to be pulled from the Pi, so you might get red errors in the e
 
 You should now be able to run and debug the app in Visual Studio, or navigate to the `/home/pi/projects/AcuriteSensor/bin/ARM/Debug` folder and run `./AcuriteSensor.out`.
 
-## Future enhancements
+## Reporting to Adafruit IO
 
-I'd like this code to produce the data somewhere other than the console so that other apps on the Pi can easily use the data, maybe a UDP packet?
-
-I'm also planning on adding a CMake project so that this can be easily built on the Pi without needing Visual Studio on another machine.
+Set the `ADAFRUIT_IO_USERNAME` and `ADAFRUIT_IO_KEY` environment variables to enable data reporting to Adafruit IO, with feeds named `acurite-sensor-a-temp` through `acurite-sensor-c-temp`.
